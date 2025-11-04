@@ -1,0 +1,84 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v3.1",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v3.1": {
+      "AssetsView/1.0.0": {
+        "dependencies": {
+          "AssetsTools.NET": "1.0.0",
+          "Microsoft.CSharp": "4.7.0",
+          "System.Data.DataSetExtensions": "4.5.0"
+        },
+        "runtime": {
+          "AssetsView.dll": {}
+        }
+      },
+      "Microsoft.CSharp/4.7.0": {},
+      "Mono.Cecil/0.11.3": {
+        "runtime": {
+          "lib/netstandard2.0/Mono.Cecil.Mdb.dll": {
+            "assemblyVersion": "0.11.3.0",
+            "fileVersion": "0.11.3.0"
+          },
+          "lib/netstandard2.0/Mono.Cecil.Pdb.dll": {
+            "assemblyVersion": "0.11.3.0",
+            "fileVersion": "0.11.3.0"
+          },
+          "lib/netstandard2.0/Mono.Cecil.Rocks.dll": {
+            "assemblyVersion": "0.11.3.0",
+            "fileVersion": "0.11.3.0"
+          },
+          "lib/netstandard2.0/Mono.Cecil.dll": {
+            "assemblyVersion": "0.11.3.0",
+            "fileVersion": "0.11.3.0"
+          }
+        }
+      },
+      "System.Data.DataSetExtensions/4.5.0": {},
+      "AssetsTools.NET/1.0.0": {
+        "dependencies": {
+          "Mono.Cecil": "0.11.3"
+        },
+        "runtime": {
+          "AssetsTools.NET.dll": {}
+        }
+      }
+    }
+  },
+  "libraries": {
+    "AssetsView/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "Microsoft.CSharp/4.7.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-pTj+D3uJWyN3My70i2Hqo+OXixq3Os2D1nJ2x92FFo6sk8fYS1m1WLNTs0Dc1uPaViH0YvEEwvzddQ7y4rhXmA==",
+      "path": "microsoft.csharp/4.7.0",
+      "hashPath": "microsoft.csharp.4.7.0.nupkg.sha512"
+    },
+    "Mono.Cecil/0.11.3": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-DNYE+io5XfEE8+E+5padThTPHJARJHbz1mhbhMPNrrWGKVKKqj/KEeLvbawAmbIcT73NuxLV7itHZaYCZcVWGg==",
+      "path": "mono.cecil/0.11.3",
+      "hashPath": "mono.cecil.0.11.3.nupkg.sha512"
+    },
+    "System.Data.DataSetExtensions/4.5.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-221clPs1445HkTBZPL+K9sDBdJRB8UN8rgjO3ztB0CQ26z//fmJXtlsr6whGatscsKGBrhJl5bwJuKSA8mwFOw==",
+      "path": "system.data.datasetextensions/4.5.0",
+      "hashPath": "system.data.datasetextensions.4.5.0.nupkg.sha512"
+    },
+    "AssetsTools.NET/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    }
+  }
+}
