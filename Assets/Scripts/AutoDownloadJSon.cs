@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text.RegularExpressions;
 using DefaultNamespace;
+using DefaultNamespace.Data;
 using Unity.VisualScripting;
 using UnityEditor;
 using UnityEngine;
@@ -65,7 +66,7 @@ public class AutoDownloadJson : MonoBehaviour
     /// <summary>
     /// Json数据
     /// </summary>
-    public static MonstersRoot petData;
+    public static MonstersRoot petData => MonstersData.MonstersRoot;
 
     public PetSkinsRoot petSkinData;
     private VersionRoot version;
@@ -105,7 +106,7 @@ public class AutoDownloadJson : MonoBehaviour
         string url = "https://seerh5.61.com/resource/config/xml/";
         // petData
         string petDataurl = url + version.files.resource.config.xml.monsters_json;
-        petData = LoadPetData(petDataurl);
+        // petData = LoadPetData(petDataurl);
         // petSkinData
         string petSkinDataurl = url + version.files.resource.config.xml.pet_skin_json;
         petSkinData = LoadPetSkinData(petSkinDataurl);
