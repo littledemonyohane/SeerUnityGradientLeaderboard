@@ -16,7 +16,7 @@ public class ScreenSetting : MonoBehaviour
     {
         if (Application.platform == RuntimePlatform.Android)
         {
-            Application.targetFrameRate = 60;
+            // Application.targetFrameRate = 60;
             FullScreenToggle.transform.gameObject.SetActive(false);
         }
         originalWidth = Screen.width;
@@ -24,7 +24,7 @@ public class ScreenSetting : MonoBehaviour
         //isFullScreen = Screen.fullScreen;
         if (Screen.fullScreenMode == FullScreenMode.Windowed)
         {
-            Application.targetFrameRate = 120;
+            // Application.targetFrameRate = 120;
             FullScreenToggle.isOn = false;
         }
         else

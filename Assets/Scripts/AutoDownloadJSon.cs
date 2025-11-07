@@ -68,7 +68,7 @@ public class AutoDownloadJson : MonoBehaviour
     /// </summary>
     public static MonstersRoot petData => MonstersData.MonstersRoot;
 
-    public PetSkinsRoot petSkinData;
+    public PetSkinsRoot petSkinData => SkinData.PetSkinsRoot;
     private VersionRoot version;
 
     /// <summary>
@@ -109,7 +109,8 @@ public class AutoDownloadJson : MonoBehaviour
         // petData = LoadPetData(petDataurl);
         // petSkinData
         string petSkinDataurl = url + version.files.resource.config.xml.pet_skin_json;
-        petSkinData = LoadPetSkinData(petSkinDataurl);
+        // petSkinData = LoadPetSkinData(petSkinDataurl);
+
         // 修正皮肤ID长度
         foreach (var skin in petSkinData.PetSkins.Skin)
         {
@@ -129,7 +130,7 @@ public class AutoDownloadJson : MonoBehaviour
 
             petSkinList.Add(new petSkinList { MonsterID = skin.MonID.ToString(), SkinID = skinID });
         }
-
+        
         // 监听搜索按钮
         button.onClick.AddListener(OnSearch);
         DateTimeText.text = $"{DateTime.Now.Year}年{DateTime.Now.Month}月版本";
