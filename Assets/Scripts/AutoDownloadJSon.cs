@@ -8,7 +8,9 @@ using System.Text.RegularExpressions;
 using DefaultNamespace;
 using DefaultNamespace.Data;
 using Unity.VisualScripting;
+#if UNITY_EDITOR
 using UnityEditor;
+#endif
 using UnityEngine;
 using UnityEngine.Networking;
 using UnityEngine.UI;
@@ -100,17 +102,15 @@ public class AutoDownloadJson : MonoBehaviour
 
     private void Start()
     {
-        // 获取最新version，里面包含所有最新的json
-        version = LoadVersionData("https://seerh5.61.com/version/version.json");
-        // xml目录，包含精灵数据和皮肤数据
-        string url = "https://seerh5.61.com/resource/config/xml/";
-        // petData
-        string petDataurl = url + version.files.resource.config.xml.monsters_json;
-        // petData = LoadPetData(petDataurl);
-        // petSkinData
-        string petSkinDataurl = url + version.files.resource.config.xml.pet_skin_json;
-        // petSkinData = LoadPetSkinData(petSkinDataurl);
+        // H5 已停更，版本与图集现都从 Unity 镜像获取；monsters/pet_skin 数据由 VersionManager 在
+        // Main 场景预加载到 MonstersData/SkinData 的静态字段。此处只负责 UI 层面的消费。
+        version = null;
 
+        if (petSkinData == null || petSkinData.PetSkins == null || petSkinData.PetSkins.Skin == null)
+        {
+            Debug.LogWarning("[AutoDownloadJson] petSkinData 未加载，跳过皮肤ID修正。检查 VersionManager 是否成功下载 pet_skin.json。");
+        }
+        else
         // 修正皮肤ID长度
         foreach (var skin in petSkinData.PetSkins.Skin)
         {
@@ -781,9 +781,8 @@ public class AutoDownloadJson : MonoBehaviour
     /// <param name="CountermarkID"> 刻印ID </param>
     public void CountermarkSpawnTest(string CountermarkID)
     {
-        // 刻印图片地址
-        string address = "https://seerh5.61.com/resource/assets/countermark/icon/" +
-                         LoadCountermarkData(CountermarkID + ".png");
+        // 刻印图片地址（Unity 镜像）
+        string address = SeerResources.CountermarkIconUrl(CountermarkID);
         CurrentCountermarkObj = Instantiate(CountermarkPrefab, MonsterPrefabParent);
         // 开协程下载图片
         StartCoroutine(LoadCountermarkTexture(address, CurrentCountermarkObj));
@@ -791,28 +790,16 @@ public class AutoDownloadJson : MonoBehaviour
 
     public string LoadCountermarkData(string selectedKey)
     {
-        // 将JSON字符串转换为JObject，方便动态查找
-        JObject jsonObject = JObject.Parse(VersionText);
-        // 获取指定key的值，例如 key = "41110.png"
-        string selectedValue = jsonObject["files"]["resource"]["assets"]["countermark"]["icon"][selectedKey].ToString();
-
-        return selectedValue;
+        // Unity 镜像使用原始文件名，无需哈希名映射
+        return selectedKey;
     }
 
 
     public VersionRoot LoadVersionData(string url)
     {
-        // 下载json数据
-        WWW www = new WWW(url);
-        while (!www.isDone)
-        {
-        }
-
-        VersionText = www.text;
-        // 解析json数据
-        VersionRoot versionData = JsonConvert.DeserializeObject<VersionRoot>(VersionText);
-
-        return versionData;
+        // 兼容保留：H5 版 version.json 已停更。此处不再阻塞主线程，仅返回 null。
+        VersionText = "";
+        return null;
     }
 
     public static MonstersRoot LoadPetData(string url)
@@ -894,12 +881,11 @@ public class AutoDownloadJson : MonoBehaviour
     IEnumerator LoadTexture(int id, GameObject currentObj)
     {
         isLoading = true; // 设置正在加载图片的标志
-        string address;
-        address= $"https://raw.githubusercontent.com/SeerAPI/seer-unity-assets/main/newseer/assets/art/ui/assets/pet/head/{id}.png";
+        string address = SeerResources.PetHeadUrl(id);
 
 
         // 检查本地缓存文件是否存在
-        string cachePath = Path.Combine(Application.persistentDataPath, $"{id}.png");
+        string cachePath = SeerResources.UserDataFile($"{id}.png");
         Texture2D t2d = null;
     
         // 如果本地缓存文件存在，直接从本地加载

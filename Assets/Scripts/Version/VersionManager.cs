@@ -1,25 +1,31 @@
 using System;
 using System.IO;
 using System.Threading.Tasks;
+using Cysharp.Threading.Tasks;
 using DefaultNamespace.Data;
 using DefaultNamespace.MessageBox;
 using Newtonsoft.Json;
 using UnityEngine;
 using UnityEngine.Networking;
 using UnityEngine.SceneManagement;
-using Cysharp.Threading.Tasks;
 
 namespace Version
 {
     public class VersionManager : MonoBehaviour
     {
-        private string _outputPath;
-        private const string Url = "https://raw.githubusercontent.com/oldml/SeerUnityConfig/main/config/";
+        static bool IsMobilePlatform =>
+            Application.platform == RuntimePlatform.IPhonePlayer ||
+            Application.platform == RuntimePlatform.Android;
+
+        string _outputPath = "";
+        bool _showLocalInstallPrompt;
+        string _localInstallInput = "";
+        string _localInstallPromptError = "";
+        UniTaskCompletionSource<string> _localInstallPromptTcs;
 
         public MessageBox messageBox;
-
         public GameObject failedPanel;
-        
+
         public class GitHubFileInfo
         {
             public string Name { get; set; }
@@ -35,67 +41,280 @@ namespace Version
             public string Encoding { get; set; }
         }
 
-
-        private async void Start()
+        async void Start()
         {
             DontDestroyOnLoad(gameObject);
             try
             {
-                _outputPath = Path.Combine(Application.persistentDataPath, "monsters.json");
+                SeerResources.EnsureUserDataRootExists();
+                _outputPath = SeerResources.UserDataFile(SeerResources.MonstersFile);
 
-                // 检查远程文件是否有更新
-                string sha = await GetFileLastSHA("oldml", "SeerUnityConfig", "config/monsters.json");
-
-                var localSHA = "";
-
-                if (PlayerPrefs.HasKey("localSHA"))
+                if (!IsMobilePlatform)
                 {
-                    // 比较本地缓存版本
-                    localSHA = PlayerPrefs.GetString("localSHA");
-                }
-
-                if (sha != localSHA || !File.Exists(_outputPath))
-                {
-                    messageBox.Setup("更新提示", "检测到新版本数据变更，是否更新？\n 大小：15MB", async () =>
-                        {
-                            await Download(sha);
-                        },
-                        async () =>
-                        {
-                            if (!PlayerPrefs.HasKey("firstOpen") || !File.Exists(_outputPath))
-                            {
-                                var result = await Download(sha);
-                                if (result)
-                                {
-                                    PlayerPrefs.SetInt("firstOpen",1);
-                                    SceneManager.LoadSceneAsync("Leaderboard");
-                                }
-                            }
-                            else
-                            {
-                                SceneManager.LoadSceneAsync("Leaderboard");
-                            }
-                        });
+                    if (await TryBootstrapFromLocalAsync())
+                    {
+                        LoadLeaderboardScene();
+                        return;
+                    }
                 }
                 else
                 {
-                    Debug.Log("本地缓存版本一致，无需更新");
-                    RefreshMonstersData();
-                    SceneManager.LoadSceneAsync("Leaderboard");
+                    Debug.Log("[VersionManager] Mobile platform detected. Skipping local install search.");
                 }
+
+                await ContinueMirrorStartupAsync();
             }
-            catch (Exception e)
+            catch (Exception ex)
             {
-                Debug.LogError($"error: {e.Message}");
+                Debug.LogError($"[VersionManager] Startup failed.\n{ex}");
+                OnDownloadFailed().Forget();
             }
         }
 
-        private async UniTask<string> GetFileLastSHA(string owner, string repo, string filePath)
+        async UniTask<bool> TryBootstrapFromLocalAsync()
         {
-            string apiUrl = $"https://api.github.com/repos/{owner}/{repo}/contents/{filePath}";
+            var reader = new LocalUnityAssetReader();
+            if (reader.IsAvailable)
+            {
+                Debug.Log(reader.DescribeStatus());
+                if (EnsureLocalConfigReady(reader) && RefreshMonstersData())
+                {
+                    Debug.Log("[VersionManager] Loaded config from the local Seer source root.");
+                    return true;
+                }
+            }
+            else
+            {
+                Debug.Log("[VersionManager] No usable local Seer source root was detected. Prompting for a folder.");
+            }
 
-            using UnityWebRequest request = UnityWebRequest.Get(apiUrl);
+            var pickedPath = await PromptForLocalInstallPathAsync();
+            if (string.IsNullOrEmpty(pickedPath))
+            {
+                return false;
+            }
+
+            SeerResources.LocalInstallPath = pickedPath;
+            var selectedReader = new LocalUnityAssetReader(pickedPath);
+            if (!selectedReader.IsAvailable)
+            {
+                return false;
+            }
+
+            Debug.Log(selectedReader.DescribeStatus());
+            if (EnsureLocalConfigReady(selectedReader) && RefreshMonstersData())
+            {
+                Debug.Log("[VersionManager] Loaded config from the user-selected Seer source root.");
+                return true;
+            }
+
+            return false;
+        }
+
+        bool EnsureLocalConfigReady(LocalUnityAssetReader reader)
+        {
+            var monstersPath = SeerResources.UserDataFile(SeerResources.MonstersFile);
+            var skinPath = SeerResources.UserDataFile(SeerResources.PetSkinFile);
+            var configVersion = reader.GetConfigPackageVersion();
+            var installPath = reader.InstallRoot;
+
+            var cachedVersion = PlayerPrefs.GetString(SeerResources.LocalConfigVersionPrefKey, "");
+            var cachedInstallPath = SeerResources.NormalizePath(
+                PlayerPrefs.GetString(SeerResources.LocalConfigInstallPrefKey, ""));
+
+            var needsExport =
+                !File.Exists(monstersPath)
+                || !File.Exists(skinPath)
+                || !string.Equals(cachedVersion, configVersion, StringComparison.Ordinal)
+                || !string.Equals(cachedInstallPath, installPath, StringComparison.OrdinalIgnoreCase);
+
+            if (!needsExport)
+            {
+                return true;
+            }
+
+            var exporter = new SeerLocalConfigExporter(reader);
+            var result = exporter.ExportToPersistentData();
+            if (!result.Success)
+            {
+                Debug.LogWarning(
+                    "[VersionManager] Local Unity export failed. Falling back to existing cache or mirror.\n" +
+                    result.Error);
+                return File.Exists(monstersPath);
+            }
+
+            PlayerPrefs.SetString(SeerResources.LocalConfigVersionPrefKey, configVersion);
+            PlayerPrefs.SetString(SeerResources.LocalConfigInstallPrefKey, installPath);
+            PlayerPrefs.SetString(SeerResources.LocalDefaultManifestVersionPrefKey, reader.GetDefaultPackageVersion());
+            PlayerPrefs.Save();
+
+            Debug.Log(
+                $"[VersionManager] Local config export completed. monsters={result.MonsterCount}, " +
+                $"configVersion={result.ConfigVersion}, petSkinSource={result.PetSkinSource}");
+            return true;
+        }
+
+        async UniTask<string> PromptForLocalInstallPathAsync()
+        {
+            if (IsMobilePlatform)
+            {
+                Debug.Log("[VersionManager] Mobile: skipping folder picker prompt.");
+                return "";
+            }
+
+            _localInstallInput = SeerResources.LocalInstallPath;
+            if (string.IsNullOrEmpty(_localInstallInput))
+            {
+                _localInstallInput = SeerResources.FindBestLocalInstall();
+            }
+
+            if (string.IsNullOrEmpty(_localInstallInput))
+            {
+                _localInstallInput = @"D:\SeerLauncher\games\NewSeer";
+            }
+
+            _localInstallPromptError = "";
+            _showLocalInstallPrompt = true;
+            _localInstallPromptTcs = new UniTaskCompletionSource<string>();
+            return await _localInstallPromptTcs.Task;
+        }
+
+        void BrowseLocalInstallPrompt()
+        {
+            var initialPath = _localInstallInput;
+            if (string.IsNullOrWhiteSpace(initialPath))
+            {
+                initialPath = SeerResources.FindBestLocalInstall();
+            }
+
+            if (string.IsNullOrWhiteSpace(initialPath))
+            {
+                initialPath = @"D:\";
+            }
+
+            if (!WindowsFolderPicker.TryPickFolder("Choose the NewSeer install or mirror root", initialPath, out var folderPath))
+            {
+                if (Application.platform == RuntimePlatform.WindowsPlayer ||
+                    Application.platform == RuntimePlatform.WindowsEditor)
+                {
+                    _localInstallPromptError = "No folder was selected.";
+                }
+                else
+                {
+                    _localInstallPromptError = "Folder browsing is only available on Windows.";
+                }
+
+                return;
+            }
+
+            _localInstallInput = folderPath;
+            _localInstallPromptError = "";
+        }
+
+        void ConfirmLocalInstallPrompt()
+        {
+            var normalized = SeerResources.NormalizePath(_localInstallInput);
+            if (!SeerResources.LooksLikeLocalInstall(normalized))
+            {
+                _localInstallPromptError =
+                    "Invalid folder. It must contain Seer_Data/yoo plus package manifest files.";
+                return;
+            }
+
+            CloseLocalInstallPrompt(normalized);
+        }
+
+        void CloseLocalInstallPrompt(string result)
+        {
+            _showLocalInstallPrompt = false;
+            _localInstallPromptError = "";
+
+            var tcs = _localInstallPromptTcs;
+            _localInstallPromptTcs = null;
+            tcs?.TrySetResult(result);
+        }
+
+        async UniTask ContinueMirrorStartupAsync()
+        {
+            var sha = await GetFileLastSHA(
+                SeerResources.ConfigRepoOwner,
+                SeerResources.ConfigRepoName,
+                SeerResources.ConfigRepoMonstersPath);
+
+            var localSHA = PlayerPrefs.HasKey("localSHA")
+                ? PlayerPrefs.GetString("localSHA")
+                : "";
+
+            var remoteAvailable = !string.IsNullOrEmpty(sha);
+            if (!remoteAvailable)
+            {
+                if (File.Exists(_outputPath) && RefreshMonstersData())
+                {
+                    Debug.LogWarning("[VersionManager] Unable to verify the remote mirror. Using cached local data.");
+                    LoadLeaderboardScene();
+                    return;
+                }
+
+                Debug.LogError("[VersionManager] Unable to reach the remote mirror and no local cache is available.");
+                OnDownloadFailed().Forget();
+                return;
+            }
+
+            if (sha != localSHA || !File.Exists(_outputPath))
+            {
+                if (messageBox != null)
+                {
+                    messageBox.Setup(
+                        "Mirror Update",
+                        "A newer mirror config was detected. Update now?\n" +
+                        "If you have a local client or a synced mirror root, local export is preferred.",
+                        () => Download(sha).Forget(),
+                        () => UseCacheOrDownloadAsync(sha).Forget());
+                    return;
+                }
+
+                await UseCacheOrDownloadAsync(sha);
+                return;
+            }
+
+            Debug.Log("[VersionManager] Mirror config is unchanged. Using cached files.");
+            if (RefreshMonstersData())
+            {
+                LoadLeaderboardScene();
+                return;
+            }
+
+            await Download(sha);
+        }
+
+        async UniTask UseCacheOrDownloadAsync(string sha)
+        {
+            if (!PlayerPrefs.HasKey("firstOpen") || !File.Exists(_outputPath))
+            {
+                var result = await Download(sha);
+                if (result)
+                {
+                    PlayerPrefs.SetInt("firstOpen", 1);
+                }
+                return;
+            }
+
+            if (RefreshMonstersData())
+            {
+                LoadLeaderboardScene();
+                return;
+            }
+
+            await Download(sha);
+        }
+
+        async UniTask<string> GetFileLastSHA(string owner, string repo, string filePath)
+        {
+            var apiUrl = $"https://api.github.com/repos/{owner}/{repo}/contents/{filePath}";
+
+            using var request = UnityWebRequest.Get(apiUrl);
             request.SetRequestHeader("User-Agent", "Unity-App");
+            request.timeout = 15;
 
             var operation = request.SendWebRequest();
             while (!operation.isDone)
@@ -107,42 +326,36 @@ namespace Version
             if (request.result == UnityWebRequest.Result.ConnectionError ||
                 request.result == UnityWebRequest.Result.ProtocolError)
 #else
-        if (request.isNetworkError || request.isHttpError)
+            if (request.isNetworkError || request.isHttpError)
 #endif
             {
-                Debug.LogError($"获取commit信息失败: {request.error}");
+                Debug.LogError($"[VersionManager] Failed to query GitHub file info: {request.error}");
                 return null;
             }
 
-            string jsonResponse = request.downloadHandler.text;
-
-            GitHubFileInfo fileInfo = JsonConvert.DeserializeObject<GitHubFileInfo>(jsonResponse);
-
-            if (fileInfo != null)
+            var fileInfo = JsonConvert.DeserializeObject<GitHubFileInfo>(request.downloadHandler.text);
+            if (fileInfo == null)
             {
-                string fileSha = fileInfo.SHA;
-                Debug.Log($"文件SHA: {fileSha}");
-                return fileSha; // 使用SHA作为版本标识
+                return null;
             }
 
-            return null;
+            Debug.Log($"[VersionManager] Remote monsters.json SHA: {fileInfo.SHA}");
+            return fileInfo.SHA;
         }
 
-        private static async Task<bool> DownloadMonstersJsonAsync(int maxRetries = 3)
+        static async Task<bool> DownloadMirrorFileAsync(string fileName, int maxRetries = 3)
         {
-            var fileName = "monsters.json";
-            var outputPath = Path.Combine(Application.persistentDataPath, fileName);
+            var outputPath = SeerResources.UserDataFile(fileName);
+            var url = SeerResources.ConfigMirrorBase + fileName;
 
-            for (int attempt = 0; attempt <= maxRetries; attempt++)
+            for (var attempt = 0; attempt <= maxRetries; attempt++)
             {
-                UnityWebRequest request = UnityWebRequest.Get(Url + fileName);
-                request.timeout = 30; // 设置超时时间（秒）
+                var request = UnityWebRequest.Get(url);
+                request.timeout = 60;
 
                 try
                 {
                     var operation = request.SendWebRequest();
-
-                    // 等待请求完成
                     while (!operation.isDone)
                     {
                         await Task.Yield();
@@ -152,159 +365,199 @@ namespace Version
                     if (request.result == UnityWebRequest.Result.ConnectionError ||
                         request.result == UnityWebRequest.Result.ProtocolError)
 #else
-            if (request.isNetworkError || request.isHttpError)
+                    if (request.isNetworkError || request.isHttpError)
 #endif
                     {
-                        Debug.LogError($"下载失败 (尝试 {attempt + 1}/{maxRetries + 1}): {request.error}");
+                        Debug.LogError(
+                            $"[VersionManager] Failed to download {fileName} " +
+                            $"({attempt + 1}/{maxRetries + 1}): {request.error}");
                         if (attempt < maxRetries)
                         {
-                            await Task.Delay(1000 * (attempt + 1)); // 递增延迟重试
+                            await Task.Delay(1000 * (attempt + 1));
                         }
-
                         continue;
                     }
 
-                    // 写入文件
-                    byte[] fileBytes = request.downloadHandler.data;
+                    var fileBytes = request.downloadHandler.data;
                     await File.WriteAllBytesAsync(outputPath, fileBytes);
-                    Debug.Log($"文件已下载到: {outputPath}");
-                    return true; // 下载成功
+                    Debug.Log($"[VersionManager] Downloaded {fileName} -> {outputPath}");
+                    return true;
                 }
                 catch (Exception ex)
                 {
-                    Debug.LogError($"发生未预期的错误: {ex.Message}");
-                    Debug.LogError($"下载失败 (尝试 {attempt + 1}/{maxRetries + 1}): {ex.Message}");
-                    Debug.LogError($"内部异常: {ex.InnerException?.Message}");
-                    return false; // 未知错误，不重试
+                    Debug.LogError($"[VersionManager] Download exception for {fileName}: {ex.Message}");
+                    return false;
                 }
                 finally
                 {
-                    request.Dispose(); // 释放资源
+                    request.Dispose();
                 }
             }
 
-            Debug.LogError("达到最大重试次数，下载失败");
             return false;
         }
-        
-        private static async Task<bool> DownloadMonstersSkinJsonAsync(int maxRetries = 3)
-        {
-            var fileName = "pet_skin.json";
-            var outputPath = Path.Combine(Application.persistentDataPath, fileName);
 
-            for (int attempt = 0; attempt <= maxRetries; attempt++)
-            {
-                UnityWebRequest request = UnityWebRequest.Get(Url + fileName);
-                request.timeout = 30; // 设置超时时间（秒）
+        static Task<bool> DownloadMonstersJsonAsync(int maxRetries = 3) =>
+            DownloadMirrorFileAsync(SeerResources.MonstersFile, maxRetries);
 
-                try
-                {
-                    var operation = request.SendWebRequest();
+        static Task<bool> DownloadMonstersSkinJsonAsync(int maxRetries = 3) =>
+            DownloadMirrorFileAsync(SeerResources.PetSkinFile, maxRetries);
 
-                    // 等待请求完成
-                    while (!operation.isDone)
-                    {
-                        await Task.Yield();
-                    }
-
-#if UNITY_2020_1_OR_NEWER
-                    if (request.result == UnityWebRequest.Result.ConnectionError ||
-                        request.result == UnityWebRequest.Result.ProtocolError)
-#else
-            if (request.isNetworkError || request.isHttpError)
-#endif
-                    {
-                        Debug.LogError($"下载失败 (尝试 {attempt + 1}/{maxRetries + 1}): {request.error}");
-                        if (attempt < maxRetries)
-                        {
-                            await Task.Delay(1000 * (attempt + 1)); // 递增延迟重试
-                        }
-
-                        continue;
-                    }
-
-                    // 写入文件
-                    byte[] fileBytes = request.downloadHandler.data;
-                    await File.WriteAllBytesAsync(outputPath, fileBytes);
-                    Debug.Log($"文件已下载到: {outputPath}");
-                    return true; // 下载成功
-                }
-                catch (Exception ex)
-                {
-                    Debug.LogError($"发生未预期的错误: {ex.Message}");
-                    Debug.LogError($"下载失败 (尝试 {attempt + 1}/{maxRetries + 1}): {ex.Message}");
-                    Debug.LogError($"内部异常: {ex.InnerException?.Message}");
-                    return false; // 未知错误，不重试
-                }
-                finally
-                {
-                    request.Dispose(); // 释放资源
-                }
-            }
-
-            Debug.LogError("达到最大重试次数，下载失败");
-            return false;
-        }
-        
-        private void RefreshMonstersData()
-        {
-            string outputPath = Path.Combine(Application.persistentDataPath, "monsters.json");
-            Debug.Log(outputPath);
-            if (File.Exists(outputPath))
-            {
-                Debug.Log("ReadMonstersData");
-                string fileData = File.ReadAllText(outputPath);
-                MonstersData.MonstersRoot = JsonConvert.DeserializeObject<MonstersRoot>(fileData);
-            }
-
-            var skinPath = Path.Combine(Application.persistentDataPath, "pet_skin.json");
-            if (File.Exists(skinPath))
-            {
-                Debug.Log("ReadSkinData");
-                string fileData = File.ReadAllText(skinPath);
-                SkinData.PetSkinsRoot = JsonConvert.DeserializeObject<PetSkinsRoot>(fileData);
-            }
-        }
-
-        private async UniTask<bool> Download(string sha)
+        bool RefreshMonstersData()
         {
             try
             {
-                // 等待下载完成且成功
-                bool downloadSuccess = await DownloadMonstersJsonAsync();
-                if (!downloadSuccess)
+                var monstersPath = SeerResources.UserDataFile(SeerResources.MonstersFile);
+                if (!File.Exists(monstersPath))
                 {
-                    Debug.LogError("下载失败，无法继续执行");
-                    OnDownloadFailed().Forget();
                     return false;
+                }
+
+                var monstersJson = File.ReadAllText(monstersPath);
+                MonstersData.MonstersRoot = JsonConvert.DeserializeObject<MonstersRoot>(monstersJson);
+                if (MonstersData.MonstersRoot?.Monsters?.Monster == null)
+                {
+                    Debug.LogError("[VersionManager] Failed to parse monsters.json.");
+                    return false;
+                }
+
+                var skinPath = SeerResources.UserDataFile(SeerResources.PetSkinFile);
+                if (File.Exists(skinPath))
+                {
+                    var skinJson = File.ReadAllText(skinPath);
+                    SkinData.PetSkinsRoot = JsonConvert.DeserializeObject<PetSkinsRoot>(skinJson)
+                                            ?? SeerLocalConfigExporter.CreateEmptyPetSkinsRoot();
                 }
                 else
                 {
-                    PlayerPrefs.SetString("localSHA", sha);
+                    SkinData.PetSkinsRoot = SeerLocalConfigExporter.CreateEmptyPetSkinsRoot();
                 }
-                bool downloadSkinSuccess = await DownloadMonstersSkinJsonAsync();
-                if (!downloadSkinSuccess)
-                {
-                    Debug.LogError("下载失败，无法继续执行");
-                    OnDownloadFailed().Forget();
-                    return false;
-                }
-                RefreshMonstersData();
-                SceneManager.LoadSceneAsync("Leaderboard");
+
+                return true;
             }
             catch (Exception ex)
             {
-                Debug.LogError($"更新过程中发生错误: {ex.Message}");
-                OnDownloadFailed().Forget();
+                Debug.LogError($"[VersionManager] Failed to refresh local config cache.\n{ex}");
+                return false;
             }
-            return true;
         }
 
-        private async UniTask OnDownloadFailed()
+        async UniTask<bool> Download(string sha)
         {
-            failedPanel.SetActive(true);
+            try
+            {
+                var downloadSuccess = await DownloadMonstersJsonAsync();
+                if (!downloadSuccess)
+                {
+                    Debug.LogError("[VersionManager] monsters.json download failed.");
+                    OnDownloadFailed().Forget();
+                    return false;
+                }
+
+                PlayerPrefs.SetString("localSHA", sha);
+
+                var downloadSkinSuccess = await DownloadMonstersSkinJsonAsync();
+                if (!downloadSkinSuccess)
+                {
+                    Debug.LogWarning(
+                        "[VersionManager] pet_skin.json download failed. Reusing the existing cache or an empty structure.");
+                    if (!File.Exists(SeerResources.UserDataFile(SeerResources.PetSkinFile)))
+                    {
+                        File.WriteAllText(
+                            SeerResources.UserDataFile(SeerResources.PetSkinFile),
+                            JsonConvert.SerializeObject(SeerLocalConfigExporter.CreateEmptyPetSkinsRoot(), Formatting.Indented));
+                    }
+                }
+
+                if (RefreshMonstersData())
+                {
+                    LoadLeaderboardScene();
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[VersionManager] Mirror update failed.\n{ex}");
+            }
+
+            OnDownloadFailed().Forget();
+            return false;
+        }
+
+        void LoadLeaderboardScene()
+        {
+            SceneManager.LoadSceneAsync("Leaderboard");
+        }
+
+        async UniTask OnDownloadFailed()
+        {
+            if (failedPanel != null)
+            {
+                failedPanel.SetActive(true);
+            }
+
             await UniTask.Delay(TimeSpan.FromSeconds(3f));
             Application.Quit();
+        }
+
+        void OnGUI()
+        {
+            if (!_showLocalInstallPrompt || IsMobilePlatform)
+            {
+                return;
+            }
+
+            var width = Mathf.Min(760f, Screen.width - 40f);
+            var height = 280f;
+            var rect = new Rect(
+                (Screen.width - width) * 0.5f,
+                (Screen.height - height) * 0.5f,
+                width,
+                height);
+
+            GUILayout.Window(GetInstanceID(), rect, DrawLocalInstallPromptWindow, "Select Seer Source Root");
+        }
+
+        void DrawLocalInstallPromptWindow(int windowId)
+        {
+            GUILayout.Label(
+                "No usable local Seer source root was detected.\n" +
+                "Choose a NewSeer install root or a synced mirror root that contains Seer_Data so we can export config and assets locally.");
+
+            GUILayout.Space(8f);
+            GUILayout.Label("Source root");
+            GUILayout.BeginHorizontal();
+            _localInstallInput = GUILayout.TextField(_localInstallInput ?? "", GUILayout.Height(28f));
+            if (GUILayout.Button("Browse...", GUILayout.Width(120f), GUILayout.Height(28f)))
+            {
+                BrowseLocalInstallPrompt();
+            }
+            GUILayout.EndHorizontal();
+
+            GUILayout.Space(4f);
+            GUILayout.Label(@"Example: D:\SeerLauncher\games\NewSeer");
+
+            if (!string.IsNullOrEmpty(_localInstallPromptError))
+            {
+                var oldColor = GUI.color;
+                GUI.color = new Color(1f, 0.4f, 0.4f);
+                GUILayout.Label(_localInstallPromptError);
+                GUI.color = oldColor;
+            }
+
+            GUILayout.FlexibleSpace();
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("Use Source Root", GUILayout.Height(36f)))
+            {
+                ConfirmLocalInstallPrompt();
+            }
+
+            if (GUILayout.Button("Use Mirror Instead", GUILayout.Height(36f)))
+            {
+                CloseLocalInstallPrompt("");
+            }
+            GUILayout.EndHorizontal();
+            GUI.DragWindow();
         }
     }
 }

@@ -97,3 +97,13 @@ InitTestScene*.unity*
 
 # Auto-generated scenes by play mode tests
 /[Aa]ssets/[Ii]nit[Tt]est[Ss]cene*.unity*
+
+# Seer asset export / sync outputs
+/ExportedSeerMirror*/
+/SyncedSeerMirror*/
+
+# Seer standalone tools (separate distribution)
+/tools/
+
+# Claude Code local settings
+/.claude/

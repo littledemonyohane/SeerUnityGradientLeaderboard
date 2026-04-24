@@ -78,8 +78,9 @@ public class CustomerPresets : MonoBehaviour
         // petData = ADLJ.petData;
         petData = AutoDownloadJson.petData;
 
-        // 为了获取version下所有的东西
-        LoadVersionData("https://seerh5.61.com/version/version.json");
+        // H5 version.json 已停更，不再阻塞主线程访问它。
+        jsonObject = null;
+        VersionText = "";
     }
 
 
@@ -810,12 +811,11 @@ public class CustomerPresets : MonoBehaviour
 
     IEnumerator LoadTexture(int id, GameObject currentObj)
     {
-        string address;
-        address= $"https://raw.githubusercontent.com/SeerAPI/seer-unity-assets/main/newseer/assets/art/ui/assets/pet/head/{id}.png";
+        string address = SeerResources.PetHeadUrl(id);
 
 
         // 检查本地缓存文件是否存在
-        string cachePath = Path.Combine(Application.persistentDataPath, $"{id}.png");
+        string cachePath = SeerResources.UserDataFile($"{id}.png");
         Texture2D t2d = null;
     
         // 如果本地缓存文件存在，直接从本地加载
@@ -868,29 +868,14 @@ public class CustomerPresets : MonoBehaviour
     /// <returns></returns>
     public string LoadRealHeaderData(string selectedKey)
     {
-        string selectedValue;
-        // 获取指定key的值，例如 key = "41110.png"
-        if (jsonObject["files"]["resource"]["assets"]["pet"]["head"][selectedKey]!= null)
-        {
-            selectedValue = jsonObject["files"]["resource"]["assets"]["pet"]["head"][selectedKey].ToString();
-        }
-        else
-        {
-            selectedValue = "";
-        }
-        return selectedValue;
+        // Unity 镜像使用原始文件名（如 "41110.png"），不再需要 H5 哈希名映射。
+        return selectedKey ?? "";
     }
 
     public void LoadVersionData(string url)
     {
-        // 下载json数据
-        WWW www = new WWW(url);
-        while (!www.isDone)
-        {
-        }
-
-        VersionText = www.text;
-        // 将JSON字符串转换为JObject，方便动态查找
-        jsonObject = JObject.Parse(VersionText);
+        // 兼容保留：H5 version.json 已停更。此方法不再发起网络请求。
+        VersionText = "";
+        jsonObject = null;
     }
 }
