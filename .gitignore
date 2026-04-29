@@ -66,6 +66,10 @@ sysinfo.txt
 # Mono auto generated files
 mono_crash.*
 
+# Python helper caches
+__pycache__/
+*.py[cod]
+
 # Builds
 *.apk
 *.aab
@@ -102,8 +106,10 @@ InitTestScene*.unity*
 /ExportedSeerMirror*/
 /SyncedSeerMirror*/
 
-# Seer standalone tools (separate distribution)
-/tools/
+# Seer tooling source is part of this repo; keep generated build outputs out.
+/tools/**/[Bb]in/
+/tools/**/[Oo]bj/
+!/tools/**/*.csproj
 
 # Claude Code local settings
 /.claude/

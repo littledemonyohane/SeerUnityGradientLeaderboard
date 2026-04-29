@@ -1,0 +1,184 @@
+name: Sync Seer Unity Remote Mirror
+
+on:
+  workflow_dispatch:
+    inputs:
+      all_heads:
+        description: Export all monster head avatars
+        required: true
+        default: true
+        type: boolean
+      all_countermarks:
+        description: Export all countermark icons
+        required: true
+        default: false
+        type: boolean
+      head_ids:
+        description: Optional comma-separated monster head IDs. Used when all_heads is false.
+        required: false
+        default: ""
+        type: string
+      countermark_ids:
+        description: Optional comma-separated countermark IDs. Used when all_countermarks is false.
+        required: false
+        default: ""
+        type: string
+      commit_message:
+        description: Custom git commit message
+        required: false
+        default: ""
+        type: string
+  schedule:
+    - cron: "25 3 * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: seer-remote-sync
+  cancel-in-progress: false
+
+jobs:
+  sync-remote-mirror:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: powershell
+    env:
+      MIRROR_ROOT: ${{ runner.temp }}\seer-mirror
+      EXPORT_ROOT: ${{ runner.temp }}\seer-export
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.ref_name }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Restore mirror cache
+        id: restore-mirror-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.MIRROR_ROOT }}
+          key: seer-unity-mirror-${{ github.run_id }}
+          restore-keys: |
+            seer-unity-mirror-
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install UnityPy pillow
+
+      - name: Sync remote mirror and export repo payload
+        run: |
+          $allHeads = $true
+          $allCountermarks = $false
+          $headIds = ''
+          $countermarkIds = ''
+          if ('${{ github.event_name }}' -eq 'workflow_dispatch') {
+            $allHeads = '${{ inputs.all_heads }}' -eq 'true'
+            $allCountermarks = '${{ inputs.all_countermarks }}' -eq 'true'
+            $headIds = '${{ inputs.head_ids }}'.Trim()
+            $countermarkIds = '${{ inputs.countermark_ids }}'.Trim()
+          }
+
+          $scriptArgs = @(
+            '-MirrorRoot', $env:MIRROR_ROOT,
+            '-ExportRoot', $env:EXPORT_ROOT,
+            '-RepoOutputRoot', $env:GITHUB_WORKSPACE,
+            '-PythonPath', 'python'
+          )
+
+          if ($allHeads) {
+            $scriptArgs += '-AllHeads'
+          }
+          elseif ($headIds.Length -gt 0) {
+            $scriptArgs += '-HeadIds'
+            $scriptArgs += $headIds
+          }
+
+          if ($allCountermarks) {
+            $scriptArgs += '-AllCountermarks'
+          }
+          elseif ($countermarkIds.Length -gt 0) {
+            $scriptArgs += '-CountermarkIds'
+            $scriptArgs += $countermarkIds
+          }
+
+          & .\.github\scripts\export-seer-remote-to-repo.ps1 @scriptArgs
+
+      - name: Read export summary
+        id: summary
+        run: |
+          $summaryPath = Join-Path $env:EXPORT_ROOT 'seer-github-export-summary.json'
+          $summary = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json
+
+          "summary_path=$summaryPath" >> $env:GITHUB_OUTPUT
+          "config_version=$($summary.ConfigVersion)" >> $env:GITHUB_OUTPUT
+          "default_version=$($summary.DefaultManifestVersion)" >> $env:GITHUB_OUTPUT
+          "monster_count=$($summary.MonsterCount)" >> $env:GITHUB_OUTPUT
+          "pet_skin_count=$($summary.PetSkinCount)" >> $env:GITHUB_OUTPUT
+          "head_exported=$($summary.Images.Heads.Exported)" >> $env:GITHUB_OUTPUT
+          "countermark_exported=$($summary.Images.Countermarks.Exported)" >> $env:GITHUB_OUTPUT
+
+          @"
+          ## Seer Remote Sync
+
+          - Config version: $($summary.ConfigVersion)
+          - Default manifest version: $($summary.DefaultManifestVersion)
+          - Monsters: $($summary.MonsterCount)
+          - Pet skins: $($summary.PetSkinCount) ($($summary.PetSkinSource))
+          - Heads exported: $($summary.Images.Heads.Exported)
+          - Countermarks exported: $($summary.Images.Countermarks.Exported)
+          - Requested bundles: $($summary.Sync.RequestedBundleCount)
+          "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+
+      - name: Save mirror cache
+        if: always() && steps.summary.outputs.default_version != ''
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.MIRROR_ROOT }}
+          key: seer-unity-mirror-${{ steps.summary.outputs.config_version }}-${{ steps.summary.outputs.default_version }}-${{ github.run_id }}
+
+      - name: Upload sync summary artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: seer-remote-sync-summary
+          path: |
+            ${{ env.MIRROR_ROOT }}\seer-remote-sync-summary.json
+            ${{ env.EXPORT_ROOT }}\seer-github-export-summary.json
+
+      - name: Detect generated changes
+        id: changes
+        run: |
+          $status = git status --porcelain -- config newseer
+          if ([string]::IsNullOrWhiteSpace(($status -join ""))) {
+            "changed=false" >> $env:GITHUB_OUTPUT
+            Write-Host 'No generated asset changes were detected.'
+          }
+          else {
+            "changed=true" >> $env:GITHUB_OUTPUT
+            $status
+          }
+
+      - name: Commit and push generated files
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          $message = 'chore: sync Seer Unity mirror'
+          if ('${{ github.event_name }}' -eq 'workflow_dispatch' -and '${{ inputs.commit_message }}'.Trim().Length -gt 0) {
+            $message = '${{ inputs.commit_message }}'
+          }
+          elseif ('${{ steps.summary.outputs.config_version }}'.Trim().Length -gt 0) {
+            $message = "chore: sync Seer Unity mirror (${{ steps.summary.outputs.config_version }})"
+          }
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- config newseer
+          git commit -m $message
+          git push

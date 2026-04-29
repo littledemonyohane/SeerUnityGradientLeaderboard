@@ -1,0 +1,126 @@
+<Window x:Class="SeerAssetTool.Win.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="Seer Asset Tool"
+        Height="860"
+        Width="1120"
+        MinHeight="760"
+        MinWidth="980">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="0,0,0,12">
+            <TextBlock FontSize="22" FontWeight="SemiBold" Text="Seer Asset Tool" />
+            <TextBlock Margin="0,6,0,0"
+                       TextWrapping="Wrap"
+                       Foreground="#555">
+                独立 Windows 工具。支持从本地安装或远端最新镜像导出配置、头像和刻印，也可以直接导出为当前 Unity 工程可用的 cache 布局。
+            </TextBlock>
+        </StackPanel>
+
+        <GroupBox Grid.Row="1" Header="Source And Paths" Margin="0,0,0,12">
+            <Grid Margin="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="150" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="110" />
+                    <ColumnDefinition Width="110" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" Text="Seer source root" />
+                <TextBox x:Name="SourceRootTextBox" Grid.Row="0" Grid.Column="1" Margin="0,0,8,8" Height="30" />
+                <Button Grid.Row="0" Grid.Column="2" Margin="0,0,8,8" Height="30" Content="Browse..." Click="BrowseSourceRoot_Click" />
+                <Button Grid.Row="0" Grid.Column="3" Margin="0,0,0,8" Height="30" Content="Auto Detect" Click="AutoDetectSourceRoot_Click" />
+
+                <TextBlock Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" Text="Mirror root" />
+                <TextBox x:Name="MirrorRootTextBox" Grid.Row="1" Grid.Column="1" Margin="0,0,8,8" Height="30" />
+                <Button Grid.Row="1" Grid.Column="2" Margin="0,0,8,8" Height="30" Content="Browse..." Click="BrowseMirrorRoot_Click" />
+                <Button Grid.Row="1" Grid.Column="3" Margin="0,0,0,8" Height="30" Content="Open" Click="OpenMirrorRoot_Click" />
+
+                <TextBlock Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" Text="Export output root" />
+                <TextBox x:Name="OutputRootTextBox" Grid.Row="2" Grid.Column="1" Margin="0,0,8,0" Height="30" />
+                <Button Grid.Row="2" Grid.Column="2" Margin="0,0,8,0" Height="30" Content="Browse..." Click="BrowseOutputRoot_Click" />
+                <Button Grid.Row="2" Grid.Column="3" Margin="0,0,0,0" Height="30" Content="Open" Click="OpenOutputRoot_Click" />
+            </Grid>
+        </GroupBox>
+
+        <GroupBox Grid.Row="2" Header="Options" Margin="0,0,0,12">
+            <Grid Margin="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="150" />
+                    <ColumnDefinition Width="260" />
+                    <ColumnDefinition Width="150" />
+                    <ColumnDefinition Width="260" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" Text="Export layout" />
+                <ComboBox x:Name="LayoutComboBox" Grid.Row="0" Grid.Column="1" Margin="0,0,12,8" Height="30" SelectedIndex="0">
+                    <ComboBoxItem Tag="cache" Content="Project Cache Layout" />
+                    <ComboBoxItem Tag="mirror" Content="Mirror Layout" />
+                </ComboBox>
+
+                <TextBlock Grid.Row="0" Grid.Column="2" VerticalAlignment="Center" Text="Limit per category" />
+                <TextBox x:Name="LimitTextBox" Grid.Row="0" Grid.Column="3" Margin="0,0,12,8" Height="30" Text="0" />
+
+                <CheckBox x:Name="BootstrapPythonCheckBox" Grid.Row="0" Grid.Column="4" VerticalAlignment="Center" IsChecked="True" Content="Auto install UnityPy/Pillow if missing" />
+
+                <CheckBox x:Name="AllHeadsCheckBox" Grid.Row="1" Grid.Column="1" Margin="0,0,12,8" IsChecked="True" Content="Sync all heads when downloading latest mirror" />
+                <CheckBox x:Name="AllCountermarksCheckBox" Grid.Row="1" Grid.Column="3" Margin="0,0,12,8" IsChecked="True" Content="Sync all countermarks when downloading latest mirror" />
+                <CheckBox x:Name="OpenFolderAfterSuccessCheckBox" Grid.Row="1" Grid.Column="4" Margin="0,0,0,8" IsChecked="True" Content="Open folders after successful operations" />
+
+                <CheckBox x:Name="SkipMonstersCheckBox" Grid.Row="2" Grid.Column="1" Margin="0,0,12,0" Content="Skip monsters/pet_skin config export" />
+                <CheckBox x:Name="SkipHeadsCheckBox" Grid.Row="2" Grid.Column="3" Margin="0,0,12,0" Content="Skip heads export" />
+                <CheckBox x:Name="SkipCountermarksCheckBox" Grid.Row="2" Grid.Column="4" Content="Skip countermarks export" />
+            </Grid>
+        </GroupBox>
+
+        <Border Grid.Row="3" Padding="10" Margin="0,0,0,12" Background="#FFF8E9" BorderBrush="#E2C26F" BorderThickness="1" CornerRadius="6">
+            <TextBlock TextWrapping="Wrap" Foreground="#5A4300">
+                说明：远端最新镜像链路目前已经能稳定导出 monsters、头像和刻印。`pet_skin` 在纯远端 mirror 情况下仍可能回退为 `generated-empty`，因为官方客户端把 bundle 数据进一步转换成 `pet_skin.txt` 的逻辑还没有完全逆出来。
+            </TextBlock>
+        </Border>
+
+        <WrapPanel Grid.Row="4" Margin="0,0,0,12">
+            <Button x:Name="DoctorButton" Width="160" Height="34" Margin="0,0,8,8" Content="Check Dependencies" Click="DoctorButton_Click" />
+            <Button x:Name="SyncButton" Width="180" Height="34" Margin="0,0,8,8" Content="Sync Latest Mirror" Click="SyncButton_Click" />
+            <Button x:Name="ExportButton" Width="180" Height="34" Margin="0,0,8,8" Content="Export From Source" Click="ExportButton_Click" />
+            <Button x:Name="SyncExportButton" Width="220" Height="34" Margin="0,0,8,8" Content="Sync Latest And Export" Click="SyncExportButton_Click" />
+            <Button x:Name="OpenReadmeButton" Width="140" Height="34" Margin="0,0,8,8" Content="Open README" Click="OpenReadmeButton_Click" />
+            <Button x:Name="ClearLogButton" Width="120" Height="34" Margin="0,0,8,8" Content="Clear Log" Click="ClearLogButton_Click" />
+        </WrapPanel>
+
+        <GroupBox Grid.Row="5" Header="Log">
+            <Grid Margin="12">
+                <TextBox x:Name="LogTextBox"
+                         FontFamily="Consolas"
+                         FontSize="13"
+                         IsReadOnly="True"
+                         TextWrapping="Wrap"
+                         VerticalScrollBarVisibility="Auto"
+                         HorizontalScrollBarVisibility="Auto"
+                         AcceptsReturn="True" />
+            </Grid>
+        </GroupBox>
+    </Grid>
+</Window>
