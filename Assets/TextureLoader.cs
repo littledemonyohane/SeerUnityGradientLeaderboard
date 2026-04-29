@@ -10,7 +10,7 @@ namespace DefaultNamespace
     {
         public static IEnumerator LoadTexture(int id, GameObject currentObj)
         {
-            string address = $"https://raw.githubusercontent.com/SeerAPI/seer-unity-assets/main/newseer/assets/art/ui/assets/pet/head/{id}.png";
+            string address = SeerResources.PetHeadUrl(id);
 
             // 检查本地缓存文件是否存在
             string cachePath = Path.Combine(Application.persistentDataPath, $"{id}.png");

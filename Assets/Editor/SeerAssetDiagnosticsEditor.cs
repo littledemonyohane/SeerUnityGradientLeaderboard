@@ -158,13 +158,13 @@ public static class SeerAssetDiagnosticsEditor
     [MenuItem("Seer/Asset Diagnostics/Open Config Mirror Repo")]
     public static void OpenConfigMirrorRepo()
     {
-        Application.OpenURL("https://github.com/oldml/SeerUnityConfig");
+        Application.OpenURL("https://github.com/littledemonyohane/SeerUnityGradientLeaderboard/tree/main/config");
     }
 
     [MenuItem("Seer/Asset Diagnostics/Open Assets Mirror Repo")]
     public static void OpenAssetsMirrorRepo()
     {
-        Application.OpenURL("https://github.com/SeerAPI/seer-unity-assets");
+        Application.OpenURL("https://github.com/littledemonyohane/SeerUnityGradientLeaderboard/tree/main/newseer/assets/art/ui/assets");
     }
 
     public static void BatchExportLocalConfigToPersistentData()

@@ -9,13 +9,13 @@ using UnityEngine;
 public static class SeerResources
 {
     public const string ConfigMirrorBase =
-        "https://raw.githubusercontent.com/oldml/SeerUnityConfig/main/config/";
+        "https://raw.githubusercontent.com/littledemonyohane/SeerUnityGradientLeaderboard/main/config/";
 
     public const string AssetsMirrorBase =
-        "https://raw.githubusercontent.com/SeerAPI/seer-unity-assets/main/newseer/assets/art/ui/assets/";
+        "https://raw.githubusercontent.com/littledemonyohane/SeerUnityGradientLeaderboard/main/newseer/assets/art/ui/assets/";
 
-    public const string ConfigRepoOwner = "oldml";
-    public const string ConfigRepoName = "SeerUnityConfig";
+    public const string ConfigRepoOwner = "littledemonyohane";
+    public const string ConfigRepoName = "SeerUnityGradientLeaderboard";
     public const string ConfigRepoMonstersPath = "config/monsters.json";
 
     public const string MonstersFile = "monsters.json";
