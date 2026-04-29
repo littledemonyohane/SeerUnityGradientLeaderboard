@@ -1,6 +1,13 @@
 name: Sync Seer Unity Remote Mirror
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/seer-remote-sync.yml"
+      - ".github/scripts/export-seer-remote-to-repo.ps1"
+      - "tools/**"
   workflow_dispatch:
     inputs:
       all_heads:
